@@ -1131,6 +1131,13 @@ struct GameConfig {
     // transformed in the mirror.
     bool ws_nw_full_mirror = false;
 
+    // [widescreen] sx_headroom — extend the GTE SX2 saturation clamp, and the
+    // GPU's 11-bit vertex X decode, by the live native-wide margin so a game's
+    // own FLAG-based off-screen polygon culls keep terrain that is on-screen in
+    // the wide view. Opt-in: only for titles proven to store GTE SXY words
+    // unmasked in their packets. Identity at 4:3 and on 4:3-presented frames.
+    bool ws_sx_headroom = false;
+
     // [[widescreen.signed_x_bound]] guarded LUI signed-Q16 bounds or ADDIU/ORI
     // rt,zero,imm screen-pixel bounds. Both remain identity in 4:3/menus/FMV.
     // Shared by static codegen, overlay JIT, and interpreter.

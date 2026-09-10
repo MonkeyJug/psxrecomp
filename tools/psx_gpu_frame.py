@@ -219,8 +219,16 @@ def _sx11(v: int) -> int:
     return v - 0x800 if v & 0x400 else v
 
 
+def _sx12(v: int) -> int:
+    """Sign-extend a 12-bit X coordinate: identical to _sx11 for every value a
+    real GPU accepts; also decodes the |x| in 1024..2047 range that the runtime
+    renders under [widescreen] sx_headroom."""
+    v &= 0xFFF
+    return v - 0x1000 if v & 0x800 else v
+
+
 def parse_vertex(word: int) -> Tuple[int, int]:
-    return _sx11(word & 0xFFFF), _sx11((word >> 16) & 0xFFFF)
+    return _sx12(word & 0xFFFF), _sx11((word >> 16) & 0xFFFF)
 
 
 def parse_color(word: int) -> Tuple[int, int, int]:

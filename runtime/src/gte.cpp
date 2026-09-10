@@ -190,6 +190,22 @@ static void depth_cue_from_ir(GTEState* gte, uint32_t instr) {
 // ---------------------------------------------------------------------------
 static int32_t s_ws_xnum = 1, s_ws_xden = 1;
 extern "C" int gpu_ws_present_native_43(void);  /* gpu.c — suppress on 4:3 frames */
+extern "C" int psx_ws_x_margin(void);           /* gpu.c — live per-side wide margin */
+/* Extra SX2 clamp headroom for push_sxy(): the live native-wide margin, refreshed
+ * once per RTPS/RTPT so the hot vertex path reads a plain int. 0 at true 4:3 and
+ * on any 4:3-presented frame, so hardware behaviour is unchanged there. */
+static int s_ws_sx_headroom = 0;
+extern "C" int gte_ws_sx_headroom(void) { return s_ws_sx_headroom; }
+extern "C" int gpu_ws_sx_headroom_enabled(void);   /* gpu.c — [widescreen] sx_headroom */
+static inline void gte_ws_refresh_sx_headroom(void) {
+    /* While the wide margin is live, use the widest clamp the GPU's 12-bit
+     * vertex-X decode can carry (-2048..2047). Restoring only the hardware-
+     * equivalent headroom (clamp + margin) still drops the nearest terrain
+     * rows at the wide edges: those quads were never partially visible at 4:3,
+     * so the game's FLAG cull was never tuned for them. */
+    int live = gpu_ws_sx_headroom_enabled() && !gpu_ws_present_native_43() && psx_ws_x_margin() > 0;
+    s_ws_sx_headroom = live ? 1023 : 0;
+}
 extern "C" void psx_ws_note_gte_project(int nverts);  /* gpu.c — gte_game_mode stamp */
 static int s_gte_replay_sandbox = 0;
 
@@ -918,6 +934,7 @@ void gte_rtps_internal(GTEState* gte, int16_t* V, bool setMac0, uint32_t instr) 
 // RTPS (0x01) — single vertex, always sets MAC0
 void gte_rtps(GTEState* gte, uint32_t instr) {
     gte->FLAG = 0;
+    gte_ws_refresh_sx_headroom();
     gte_rtps_internal(gte, gte->V0, true, instr);
     gte->set_error_flag();
 }
@@ -925,6 +942,7 @@ void gte_rtps(GTEState* gte, uint32_t instr) {
 // RTPT (0x30) — triple vertex, only last sets MAC0
 void gte_rtpt(GTEState* gte, uint32_t instr) {
     gte->FLAG = 0;
+    gte_ws_refresh_sx_headroom();
     gte_rtps_internal(gte, gte->V0, false, instr);
     gte_rtps_internal(gte, gte->V1, false, instr);
     gte_rtps_internal(gte, gte->V2, true, instr);

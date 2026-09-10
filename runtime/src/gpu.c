@@ -254,6 +254,11 @@ static int ws_gameplay_state_value_count = 0;
  * this many consecutive frames (save/options/memory-card) — reverts to 4:3. */
 #define WS_GTE_GAME_MODE_HYSTERESIS 45u
 void gpu_ws_set_gte_game_mode(int on) { ws_gte_game_mode_cfg = on ? 1 : 0; }
+/* [widescreen] sx_headroom (opt-in). Consumed by gte.cpp (clamp) and
+ * parse_vertex() below (12-bit X decode while the margin is live). */
+static int ws_sx_headroom_cfg = 0;
+void gpu_ws_set_sx_headroom(int on) { ws_sx_headroom_cfg = on ? 1 : 0; }
+int  gpu_ws_sx_headroom_enabled(void) { return ws_sx_headroom_cfg; }
 void gpu_pgxp_rederive_enable(void);
 void gpu_ws_set_precise_nclip(int on) {
     ws_precise_nclip_cfg = on ? 1 : 0;
@@ -3630,9 +3635,15 @@ static int32_t sign_extend(uint32_t val, int bits) {
 
 /* ---- Polygon rasterizer ---- */
 
-/* Parse a vertex position word: signed 11-bit X and Y */
+/* Parse a vertex position word: signed 11-bit X and Y. With [widescreen]
+ * sx_headroom live (gte_ws_sx_headroom() > 0) X is read as signed 12-bit: the
+ * GTE clamp is extended by the wide margin, so a game's unmasked SXY copy can
+ * legitimately carry |x| in 1024..2047 there. Every value a real GPU accepts
+ * (11-bit, sign-extended into the halfword by the GTE) decodes identically. */
+extern int gte_ws_sx_headroom(void);
 static void parse_vertex(uint32_t word, int32_t* x, int32_t* y) {
-    *x = sign_extend(word & 0x7FFu, 11);
+    if (gte_ws_sx_headroom() > 0) *x = sign_extend(word & 0xFFFu, 12);
+    else                          *x = sign_extend(word & 0x7FFu, 11);
     *y = sign_extend((word >> 16) & 0x7FFu, 11);
 }
 

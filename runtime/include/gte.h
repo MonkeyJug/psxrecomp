@@ -3,6 +3,9 @@
 #include <cstdint>
 #include <cstring>
 
+/* gte.cpp: extra SX2 clamp headroom in a native-wide frame (0 at 4:3). */
+extern "C" int gte_ws_sx_headroom(void);
+
 namespace PSXRecomp {
 namespace GTE {
 
@@ -109,11 +112,16 @@ struct GTEState {
     }
 
     void push_sxy(int64_t sx, int64_t sy) {
-        // Saturate to screen coordinates and set flags
+        // Saturate to screen coordinates and set flags. Hardware clamps SX2 to
+        // -1024..1023. In a native-wide frame the X clamp is extended by the
+        // live horizontal margin (gte_ws_sx_headroom, 0 at true 4:3) so that
+        // geometry which is on-screen in the wide view is not reported as
+        // off-screen to the game's own FLAG-based polygon culls.
         int16_t sx_sat, sy_sat;
-        if (sx < -0x400)     { sx_sat = -0x400; FLAG |= FLAG_SX2_SAT; }
-        else if (sx > 0x3FF) { sx_sat = 0x3FF;  FLAG |= FLAG_SX2_SAT; }
-        else                 { sx_sat = static_cast<int16_t>(sx); }
+        const int64_t xlim = 0x400 + gte_ws_sx_headroom();
+        if (sx < -xlim)         { sx_sat = static_cast<int16_t>(-xlim);    FLAG |= FLAG_SX2_SAT; }
+        else if (sx > xlim - 1) { sx_sat = static_cast<int16_t>(xlim - 1); FLAG |= FLAG_SX2_SAT; }
+        else                    { sx_sat = static_cast<int16_t>(sx); }
         if (sy < -0x400)     { sy_sat = -0x400; FLAG |= FLAG_SY2_SAT; }
         else if (sy > 0x3FF) { sy_sat = 0x3FF;  FLAG |= FLAG_SY2_SAT; }
         else                 { sy_sat = static_cast<int16_t>(sy); }
