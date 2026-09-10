@@ -1440,6 +1440,7 @@ GameConfig load_game_config(const fs::path& config_path_in) {
     bool ws_nw_textured_edges = false;
     int ws_nw_textured_edge_scale = 0;
     bool ws_nw_full_mirror = false;
+    bool ws_sx_headroom = false;
     std::vector<WidescreenSignedBoundSite> ws_signed_x_bound_sites;
     bool ws_offered = true;
     bool vulkan_offered = false;
@@ -1640,6 +1641,8 @@ GameConfig load_game_config(const fs::path& config_path_in) {
         }
         if (ws.contains("nw_full_mirror"))
             ws_nw_full_mirror = toml::find<bool>(ws, "nw_full_mirror");
+        if (ws.contains("sx_headroom"))
+            ws_sx_headroom = toml::find<bool>(ws, "sx_headroom");
         if (ws.contains("signed_x_bound")) {
             std::set<uint32_t> seen;
             for (const auto& item : toml::find<toml::array>(ws, "signed_x_bound")) {
@@ -2194,6 +2197,7 @@ GameConfig load_game_config(const fs::path& config_path_in) {
         /*ws_nw_textured_edges*/ ws_nw_textured_edges,
         /*ws_nw_textured_edge_scale*/ ws_nw_textured_edge_scale,
         /*ws_nw_full_mirror*/ ws_nw_full_mirror,
+        /*ws_sx_headroom*/    ws_sx_headroom,
         /*ws_signed_x_bound_sites*/ ws_signed_x_bound_sites,
         /*ws_offered*/            ws_offered,
         /*vulkan_offered*/        vulkan_offered,

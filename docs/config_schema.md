@@ -339,6 +339,25 @@ model queues have fixed capacity. Both values are restricted to `[0, 256]`
 and contribute to native-overlay cache identity. Changing the activation
 guard requires regenerating the game and overlay code.
 
+### Screen-X headroom for FLAG-based polygon culls
+
+```toml
+[widescreen]
+sx_headroom = true
+```
+
+Hardware clamps a projected X to -1024..1023 and raises FLAG bit 14 (so bit
+31); many titles skip any polygon whose vertex was flagged, as a cheap
+off-screen test. In a native-wide frame that clamp sits only a few hundred
+pixels past the visible edge, so terrain columns near the edges vanish while
+their neighbours draw. With `sx_headroom` the runtime extends the GTE SX2
+clamp to -2048..2047 while a wide margin is live and reads the GPU vertex X
+field as signed 12-bit in the same frames (extending only by the margin still
+drops the nearest terrain rows, which were never partially visible at 4:3). It is
+exact at 4:3 and on 4:3-presented frames. Opt in only for a title proven to
+copy GTE SXY words into its packets unmasked (a game that masks X to 11 bits
+before storing would decode negatives wrongly).
+
 ## Runtime block
 
 Consumed by the cmake macro `psxrecomp_v4_add_runtime_target` (eventually)
