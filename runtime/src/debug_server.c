@@ -7948,6 +7948,8 @@ static void handle_render_pass_stats(int id, const char *json)
     render_pass_get_stats(&st);
     gl_renderer_pass_diag(gd);
     image_textures = gl_renderer_pass_image_textures(&image_bytes);
+    uint64_t fb = 0, fd = 0;
+    gl_renderer_pass_flip_counts(&fb, &fd);
     send_fmt("{\"id\":%d,\"ok\":true,\"plans\":%llu,\"planned\":%llu,"
              "\"wanted\":%llu,\"refused\":%llu,\"passes\":%llu,"
              "\"aborted\":%llu,\"discarded\":%llu,\"watchdog\":%llu,\"vram_leaks\":%llu,"
@@ -7965,7 +7967,7 @@ static void handle_render_pass_stats(int id, const char *json)
              "\"cost_us\":%llu,\"cost_rewarms\":%llu,\"frame_images\":%llu,"
              "\"journaled\":%llu,"
              "\"image_textures\":%u,\"image_bytes\":%llu,\"status\":%u,"
-             "\"backups_reused\":%llu}",
+             "\"backups_reused\":%llu,\"flip_bound\":%llu,\"flip_dropped\":%llu}",
              id, (unsigned long long)st.plans, (unsigned long long)st.planned,
              (unsigned long long)st.wanted, (unsigned long long)st.refused,
              (unsigned long long)st.passes, (unsigned long long)st.aborted,
@@ -7991,7 +7993,43 @@ static void handle_render_pass_stats(int id, const char *json)
              (unsigned long long)gl_renderer_pass_journaled(),
              (unsigned)image_textures, (unsigned long long)image_bytes,
              (unsigned)psx_mod_render_pass_status(),
-             (unsigned long long)gl_renderer_pass_backups_reused());
+             (unsigned long long)gl_renderer_pass_backups_reused(),
+             (unsigned long long)fb, (unsigned long long)fd);
+}
+
+/* render_pass_flip_log count=<n>: the presenter's last n events, oldest
+ * first (gpu_gl_renderer.h GL_PFL_*): each VBlank's new-frame verdict with
+ * the dirty tests (whole present band vs the shown rect), the pending
+ * generation's match test, generations opened, promoted, expired, dropped. */
+static void handle_render_pass_flip_log(int id, const char *json)
+{
+    static GlPassFlipLogRec recs[GL_PASS_FLIP_LOG_N];
+    int count = json_get_int(json, "count", 64);
+    if (count < 1) count = 1;
+    if (count > (int)GL_PASS_FLIP_LOG_N) count = (int)GL_PASS_FLIP_LOG_N;
+    uint32_t n = gl_renderer_pass_flip_log(recs, (uint32_t)count);
+    const size_t BUF_SZ = 256 * 1024;
+    char *out = (char *)malloc(BUF_SZ);
+    if (!out) { send_err(id, "oom"); return; }
+    size_t pos = 0;
+    pos += snprintf(out + pos, BUF_SZ - pos, "{\"id\":%d,\"ok\":true,\"n\":%u,\"events\":[", id, n);
+    for (uint32_t i = 0; i < n && pos < BUF_SZ - 256; i++) {
+        const GlPassFlipLogRec *r = &recs[i];
+        pos += snprintf(out + pos, BUF_SZ - pos,
+                        "%s[%u,%u,%u,%u,%d,%d,%d,%d,%d,%d,%d,%u,%u,%d,%d,%d,%d,%d,%u]",
+                        i ? "," : "", r->seq, r->vblank, r->kind, r->outcome,
+                        r->redrawn, r->redrawn_rect, r->ox, r->oy, r->src,
+                        r->pw, r->ph, r->pend_valid, r->pend_promoted,
+                        r->pend_x, r->pend_y, r->pend_src, r->pend_tw, r->pend_th,
+                        r->cur_valid);
+    }
+    pos += snprintf(out + pos, BUF_SZ - pos,
+                    "],\"fields\":[\"seq\",\"vblank\",\"kind\",\"outcome\",\"redrawn\","
+                    "\"redrawn_rect\",\"ox\",\"oy\",\"src\",\"pw\",\"ph\",\"pend_valid\","
+                    "\"pend_promoted\",\"pend_x\",\"pend_y\",\"pend_src\",\"pend_tw\","
+                    "\"pend_th\",\"cur_valid\"]}\n");
+    debug_server_send_line(out);
+    free(out);
 }
 
 /* render_pass_refuse on=<0|1>: make the OpenGL backend decline render passes
@@ -14046,6 +14084,7 @@ static const CmdEntry s_commands[] = {
     { "gl_interp",         handle_gl_interp },
     { "render_pass_stats", handle_render_pass_stats },
     { "render_pass_dump",  handle_render_pass_dump },
+    { "render_pass_flip_log", handle_render_pass_flip_log },
     { "render_pass_refuse", handle_render_pass_refuse },
     { "gl_wide_fast",      handle_gl_wide_fast },
     { "synth_recurse",     handle_synth_recurse },

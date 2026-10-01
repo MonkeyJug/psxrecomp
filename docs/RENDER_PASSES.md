@@ -199,6 +199,27 @@ if (psx_mod_render_pass_open(period_vblanks)) {      /* 1 = generation open */
   every pass, and `frame_fingerprint` (tools/fp_identity.py) with the feature
   on and off must agree: the simulation never sees the widened cull.
 
+### Flip binding
+
+The presenter keeps three generations: the frame on screen, the frame the
+guest has flipped to that no VBlank has shown yet, and the one being built.
+A game that flips as soon as drawing ends (GP1(05h) right after DrawSync)
+often starts the next frame's draw, and so its pass, inside the same VBlank
+interval. The flip therefore binds the generation built for that rect at the
+GP1(05h) write itself (`gl_renderer_pass_note_flip`; writes made inside a
+pass are rolled back and ignored), and the next VBlank promotes the bound
+one. `render_pass_stats` reports `flip_bound` and `flip_dropped` (bound, then
+flipped away before any VBlank showed it). A VRAM copy onto itself with the
+mask set-bit off changes no pixel and does not count as a redraw of the
+displayed rect (games send a 2x1 self-copy as a GPU sync). Before both fixes
+Winning Eleven 2002 showed about half its replace passes. After them it shows
+2288 of 2290.
+
+`render_pass_flip_log count=<n>` (TCP) returns the presenter's last events
+(up to 512, `GL_PFL_*` in `gpu_gl_renderer.h`): each VBlank's new-frame
+verdict with both dirty tests, the match test against the pending
+generation, and generations opened, bound, promoted, expired and dropped.
+
 ## Verifying a title
 
 - `render_pass_stats` (TCP): passes, shedding, faults, dropped device

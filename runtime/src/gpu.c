@@ -6017,6 +6017,10 @@ static void gp1_display_area_start(uint32_t val) {
     display_area_x = val & 0x3FF;
     display_area_y = (val >> 10) & 0x1FF;
     ws_note_display_base(display_area_x);  /* learn the display buffer set (native-wide) */
+    /* Render passes: bind the generation built for this rect at the flip
+     * (a pass's own GP1 writes are rolled back, so they are not flips). */
+    if (!g_psx_render_pass_active && gr_backend() == GR_BACKEND_OPENGL)
+        gl_renderer_pass_note_flip((int)display_area_x, (int)display_area_y);
 }
 
 static void gp1_h_display_range(uint32_t val) {

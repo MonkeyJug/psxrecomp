@@ -83,6 +83,32 @@ uint64_t gl_renderer_pass_journaled(void);
 uint64_t gl_renderer_pass_backups_reused(void);
 /* Pass image textures allocated now (both generations) and their bytes. */
 uint32_t gl_renderer_pass_image_textures(uint64_t *bytes);
+/* Presenter event ring (TCP render_pass_flip_log). */
+#define GL_PASS_FLIP_LOG_N 512u
+enum { GL_PFL_NEW_FRAME_WHY = 1, /* VBlank judged a new source frame; outcome =
+                                    bits 1 geometry, 2 empty history, 4 origin moved */
+       GL_PFL_SAME_FRAME = 2,    /* VBlank re-presents the same frame */
+       GL_PFL_NEW_FRAME = 3,     /* pending-generation match test; outcome below */
+       GL_PFL_OPENED = 4,        /* a replace/phase generation was opened */
+       GL_PFL_PROMOTED = 5,      /* pending generation became current */
+       GL_PFL_INVALIDATE = 6,    /* both generations dropped (reset/teardown) */
+       GL_PFL_EXPIRED = 7,       /* current generation expired */
+       GL_PFL_FLIP_BOUND = 8 };  /* guest flip (GP1(05h)) bound the built
+                                    generation; outcome 1 = flipped one dropped */
+enum { GL_PFL_NO_MATCH = 0, GL_PFL_MATCH = 1 };
+typedef struct {
+    uint32_t seq, vblank;
+    uint8_t  kind, outcome;
+    int8_t   redrawn, redrawn_rect, src, pend_src;
+    uint8_t  pend_valid, pend_promoted, cur_valid;
+    int16_t  ox, oy, pw, ph;
+    int16_t  pend_x, pend_y, pend_tw, pend_th;
+} GlPassFlipLogRec;
+uint32_t gl_renderer_pass_flip_log(GlPassFlipLogRec *out, uint32_t max);
+/* Guest flip: GP1(05h) display start written outside a render pass. */
+void     gl_renderer_pass_note_flip(int x, int y);
+/* Generations bound at a guest flip, and bound ones dropped unshown. */
+void     gl_renderer_pass_flip_counts(uint64_t *bound, uint64_t *dropped);
 /* Debug: dump the images of the next `generations` shown frames as PNGs. */
 void     gl_renderer_pass_dump_arm(const char *dir, int generations);
 uint64_t gl_renderer_perf_ticks(void);

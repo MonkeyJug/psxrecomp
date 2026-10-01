@@ -464,6 +464,10 @@ static void pass_gens_invalidate(void);
 static void pass_note_new_frame(int origin_x, int origin_y, int source_path,
                                 int pw, int ph);
 static void pass_apply_promotion(void);
+static void pfl_note(uint8_t kind, uint8_t outcome, int redrawn,
+                     int ox, int oy, int src, int pw, int ph);
+static uint32_t s_pfl_vblank = 0;    /* interp_capture calls on the FLIP source */
+static int      s_pfl_redrawn_rect = -1; /* dirty test on the shown rect only */
 static int pass_gen_present(uint64_t deadline);
 static uint64_t s_idle_ticks_accum_fwd(uint64_t add);
 /* Render-pass VRAM transaction (see "Render passes" below). While a pass is
@@ -976,6 +980,13 @@ static void present_target_quad(GLuint tex, int tex_w, int tex_h,
                                 int lx, int ly, int lw, int lh, int v_flip,
                                 int apply_gamma, int src_scale);
 
+/* A VRAM->VRAM copy onto itself with the mask "set bit" off leaves every
+ * pixel bit-identical (mask check only skips writes), so it is not a redraw
+ * of a displayed rect for the presenter. Games send a 2x1 self-copy as a GPU
+ * sync every frame; counting it as one made a VBlank after a flip look like
+ * a new frame of the buffer on screen. */
+static int s_coh_copy_unchanged = 0;
+
 static void coh_record(int kind, int x0, int y0, int x1, int y1) {
     GlCohEvent *e = &s_coh_ring[s_coh_seq % GL_COH_RING_CAP];
     e->frame = (uint32_t)s_frame_count;
@@ -984,7 +995,7 @@ static void coh_record(int kind, int x0, int y0, int x1, int y1) {
     e->x1 = (int16_t)x1; e->y1 = (int16_t)y1;
     s_coh_seq++;
     if (kind == GL_COH_FLUSH || kind == GL_COH_FILL ||
-        kind == GL_COH_COPY || kind == GL_COH_DRAW)
+        (kind == GL_COH_COPY && !s_coh_copy_unchanged) || kind == GL_COH_DRAW)
         present_dirty_rect(x0, y0, x1, y1, 1);
 }
 
@@ -3528,7 +3539,9 @@ static void gpu_copy_rect(int sx,int sy,int dx,int dy,int w,int h) {
     if (!s_cpu_auth_dual)
         s_gpu_dirty = 1;
     coh_record(GL_COH_COPY_SRC, sx, sy, sx + w - 1, sy + h - 1);
+    s_coh_copy_unchanged = sx == dx && sy == dy && !s_mask_set;
     coh_record(GL_COH_COPY,     dx, dy, dx + w - 1, dy + h - 1);
+    s_coh_copy_unchanged = 0;
 }
 
 /* ---- backend vtable wrappers ------------------------------------------- */
@@ -5526,6 +5539,11 @@ static int interp_capture(GLuint fbo, int x, int y, int w, int h,
         int new_frame = frame_flip_is_new_frame(
             geometry_changed, s_interp_valid == 0, redrawn, origin_x, origin_y,
             s_interp_origin_x, s_interp_origin_y);
+        s_pfl_vblank++;
+        pfl_note(new_frame ? GL_PFL_NEW_FRAME_WHY : GL_PFL_SAME_FRAME,
+                 (uint8_t)((geometry_changed ? 1 : 0) | (s_interp_valid == 0 ? 2 : 0) |
+                           (origin_x != s_interp_origin_x || origin_y != s_interp_origin_y ? 4 : 0)),
+                 redrawn, origin_x, origin_y, source_path, pw, ph);
         s_interp_origin_x = origin_x;
         s_interp_origin_y = origin_y;
         (void)frame_flip_tracker_vblank(&s_interp_flip, new_frame,
@@ -5745,18 +5763,54 @@ typedef struct PassGen {
     uint32_t period;              /* guest VBlanks the frame stays on screen */
     double   t_start, t_len;      /* host ticks, set on promotion */
 } PassGen;
-static PassGen  s_pgen[2];
+/* Three generations: the one on screen (s_pgen_cur), the one the guest has
+ * flipped to but no VBlank has presented yet (s_pgen_flipped, -1 = none) and
+ * the one being built (s_pgen_bld). A game that flips as soon as drawing
+ * ends and starts the next frame inside the same VBlank interval opens frame
+ * n+1's generation before the presenter sees frame n's flip, so frame n's is
+ * bound at the flip itself (GP1(05h), gl_renderer_pass_note_flip). */
+#define PASS_GENS 3
+static PassGen  s_pgen[PASS_GENS];
 /* Slot textures are made as slots fill: [0, s_pgen_alloc_n) exist, all at
- * s_pgen_alloc_w x h. A generation never fills past pass_slot_cap, so two
+ * s_pgen_alloc_w x h. A generation never fills past pass_slot_cap, so the
  * generations stay inside its budget whatever the internal scale. */
-static GLuint   s_pgen_tex[2][PASS_SLOTS];
-static uint32_t s_pgen_alloc_n[2];
-static int      s_pgen_alloc_w[2], s_pgen_alloc_h[2];
-static int      s_pgen_cur = 0;
-static int      s_pgen_promote = 0;
+static GLuint   s_pgen_tex[PASS_GENS][PASS_SLOTS];
+static uint32_t s_pgen_alloc_n[PASS_GENS];
+static int      s_pgen_alloc_w[PASS_GENS], s_pgen_alloc_h[PASS_GENS];
+static int      s_pgen_cur = 0, s_pgen_bld = 1, s_pgen_flipped = -1;
+static int      s_pgen_promote = 0, s_pgen_promote_idx = -1;
+static uint64_t s_pgen_flip_bound = 0, s_pgen_flip_dropped = 0;
+/* The index that is neither on screen nor flipped-to. */
+static int pass_gen_free_index(void) {
+    for (int i = 0; i < PASS_GENS; i++)
+        if (i != s_pgen_cur && i != s_pgen_flipped) return i;
+    return -1;
+}
 static uint64_t s_pgen_promotions = 0, s_pgen_presents = 0, s_pgen_blends = 0;
 static uint64_t s_pgen_expired = 0, s_pgen_unmatched = 0, s_pgen_early = 0;
 static uint64_t s_pgen_late = 0;     /* presents past the frame's planned end */
+
+/* Presenter event ring (render_pass_flip_log): why each VBlank did or did
+ * not promote a pending generation. */
+static GlPassFlipLogRec s_pfl[GL_PASS_FLIP_LOG_N];
+static uint32_t s_pfl_head = 0;      /* records ever written */
+static void pfl_note(uint8_t kind, uint8_t outcome, int redrawn,
+                     int ox, int oy, int src, int pw, int ph) {
+    GlPassFlipLogRec *r = &s_pfl[s_pfl_head % GL_PASS_FLIP_LOG_N];
+    const PassGen *pend = &s_pgen[s_pgen_flipped >= 0 ? s_pgen_flipped : s_pgen_bld];
+    memset(r, 0, sizeof *r);
+    r->seq = s_pfl_head++;
+    r->vblank = s_pfl_vblank;
+    r->kind = kind; r->outcome = outcome;
+    r->redrawn = (int8_t)redrawn; r->redrawn_rect = (int8_t)s_pfl_redrawn_rect;
+    r->ox = (int16_t)ox; r->oy = (int16_t)oy; r->src = (int8_t)src;
+    r->pw = (int16_t)pw; r->ph = (int16_t)ph;
+    r->pend_valid = (uint8_t)pend->valid; r->pend_promoted = (uint8_t)pend->promoted;
+    r->pend_x = (int16_t)pend->x; r->pend_y = (int16_t)pend->y;
+    r->pend_src = (int8_t)pend->source_path;
+    r->pend_tw = (int16_t)pend->tex_w; r->pend_th = (int16_t)pend->tex_h;
+    r->cur_valid = (uint8_t)s_pgen[s_pgen_cur].valid;
+}
 
 static GLuint   s_pb_hr_tex = 0, s_pb_hr_rb = 0, s_pb_hr_fbo = 0;
 static int      s_pb_hr_w = 0, s_pb_hr_h = 0;
@@ -5801,9 +5855,12 @@ uint64_t gl_renderer_perf_ticks(void) { return SDL_GetPerformanceCounter(); }
 uint64_t gl_renderer_perf_frequency(void) { return SDL_GetPerformanceFrequency(); }
 
 static void pass_gens_invalidate(void) {
-    s_pgen[0].valid = s_pgen[1].valid = 0;
-    s_pgen[0].promoted = s_pgen[1].promoted = 0;
+    pfl_note(GL_PFL_INVALIDATE, 0, -1, -1, -1, -1, 0, 0);
+    for (int i = 0; i < PASS_GENS; i++) s_pgen[i].valid = s_pgen[i].promoted = 0;
+    s_pgen_flipped = -1;
+    s_pgen_bld = pass_gen_free_index();
     s_pgen_promote = 0;
+    s_pgen_promote_idx = -1;
 }
 
 static int s_pass_force_refuse = -1;   /* -1: read PSX_RENDER_PASS_REFUSE */
@@ -5844,7 +5901,7 @@ int gl_renderer_pass_ready(void) {
 
 /* Slots per generation that fit a 256 MiB budget for both generations. */
 static uint32_t pass_slot_cap(int tex_w, int tex_h) {
-    double bytes = (double)tex_w * (double)tex_h * 4.0 * 2.0;
+    double bytes = (double)tex_w * (double)tex_h * 4.0 * (double)PASS_GENS;
     uint32_t cap = bytes > 0.0 ? (uint32_t)((256.0 * 1024.0 * 1024.0) / bytes)
                                : PASS_SLOTS;
     if (cap > PASS_SLOTS) cap = PASS_SLOTS;
@@ -6094,8 +6151,7 @@ static void pass_free_color_fbo(GLuint *tex, GLuint *rb, GLuint *fbo,
 /* Context teardown (gl_renderer_shutdown): free the pass images, backups
  * and journal, and forget their names so a new context makes fresh ones. */
 static void pass_resources_release(void) {
-    pass_gen_release(0);
-    pass_gen_release(1);
+    for (int i = 0; i < PASS_GENS; i++) pass_gen_release(i);
     pass_gens_invalidate();
     pass_free_color_fbo(&s_pb_hr_tex, &s_pb_hr_rb, &s_pb_hr_fbo,
                         &s_pb_hr_w, &s_pb_hr_h);
@@ -6165,7 +6221,7 @@ int gl_renderer_pass_begin(int x, int y, int w, int h, int open_gen,
            pass_wide_fbo_for(x) != 0;
     tw = (wide ? g_wide_w : w) * S;
     th = h * S;
-    gi = 1 - s_pgen_cur;
+    gi = s_pgen_bld;
     g = &s_pgen[gi];
     if (open_gen) {
         if (tw != s_interp_w || th != s_interp_h) return 0;  /* not what is presented */
@@ -6179,6 +6235,7 @@ int gl_renderer_pass_begin(int x, int y, int w, int h, int open_gen,
         g->phase[0] = 0;
         g->n = 1;
         g->valid = 1;
+        pfl_note(GL_PFL_OPENED, 0, -1, x, y, g->source_path, tw, th);
     } else if (!g->valid || g->promoted || g->x != x || g->y != y ||
                g->w != w || g->h != h) {
         return 0;
@@ -6248,7 +6305,7 @@ backed_up:
 }
 
 void gl_renderer_pass_end(uint32_t alpha_q16, int keep) {
-    int S = s_hr_scale, gi = 1 - s_pgen_cur;
+    int S = s_hr_scale, gi = s_pgen_bld;
     PassGen *g = &s_pgen[gi];
     if (!s_pass_active) return;
     flush_flat_batch();
@@ -6334,6 +6391,7 @@ static int pass_gen_present(uint64_t deadline) {
     if (!render_pass_gen_select(g->phase, g->n, p, &lo, &hi, &t)) {
         g->valid = 0;
         s_pgen_expired++;
+        pfl_note(GL_PFL_EXPIRED, 0, -1, g->x, g->y, g->source_path, g->tex_w, g->tex_h);
         return 0;
     }
     if (!interp_present_pair(s_pgen_tex[s_pgen_cur][lo],
@@ -6364,6 +6422,42 @@ void gl_renderer_pass_service_presents(void) {
     }
 }
 
+/* GP1(05h) from guest code (never inside a pass): the guest flipped its
+ * display to (x, y). A generation built for that rect is now frame n's
+ * image; bind it so frame n+1's passes get a fresh generation even when they
+ * start before the next VBlank presents frame n. */
+void gl_renderer_pass_note_flip(int x, int y) {
+    PassGen *b;
+    if (s_pass_active) return;
+    b = &s_pgen[s_pgen_bld];
+    if (b->valid && !b->promoted && b->x == x && b->y == y) {
+        if (s_pgen_flipped >= 0) {          /* two flips in one VBlank interval */
+            s_pgen[s_pgen_flipped].valid = 0;
+            s_pgen_flip_dropped++;
+        }
+        s_pgen_flipped = s_pgen_bld;
+        s_pgen_bld = pass_gen_free_index();
+        s_pgen[s_pgen_bld].valid = 0;
+        s_pgen[s_pgen_bld].promoted = 0;
+        s_pgen_flip_bound++;
+        pfl_note(GL_PFL_FLIP_BOUND, 0, -1, x, y, b->source_path, b->tex_w, b->tex_h);
+    } else if (s_pgen_flipped >= 0 &&
+               (s_pgen[s_pgen_flipped].x != x || s_pgen[s_pgen_flipped].y != y)) {
+        s_pgen[s_pgen_flipped].valid = 0;   /* flipped away before it was shown */
+        s_pgen_flipped = -1;
+        s_pgen_flip_dropped++;
+        pfl_note(GL_PFL_FLIP_BOUND, 1, -1, x, y, -1, 0, 0);
+    }
+}
+
+uint32_t gl_renderer_pass_flip_log(GlPassFlipLogRec *out, uint32_t max) {
+    uint32_t n = s_pfl_head < GL_PASS_FLIP_LOG_N ? s_pfl_head : GL_PASS_FLIP_LOG_N;
+    if (n > max) n = max;
+    for (uint32_t i = 0; i < n; i++)
+        out[i] = s_pfl[(s_pfl_head - n + i) % GL_PASS_FLIP_LOG_N];
+    return n;
+}
+
 void gl_renderer_pass_diag(uint64_t out[10]) {
     out[0] = s_pgen_promotions;
     out[1] = s_pgen_presents;
@@ -6379,13 +6473,18 @@ void gl_renderer_pass_diag(uint64_t out[10]) {
 }
 
 uint64_t gl_renderer_pass_journaled(void) { return s_pj_total; }
+void gl_renderer_pass_flip_counts(uint64_t *bound, uint64_t *dropped) {
+    if (bound) *bound = s_pgen_flip_bound;
+    if (dropped) *dropped = s_pgen_flip_dropped;
+}
 uint64_t gl_renderer_pass_backups_reused(void) { return s_pb_reused; }
 
 uint32_t gl_renderer_pass_image_textures(uint64_t *bytes) {
-    uint32_t n = s_pgen_alloc_n[0] + s_pgen_alloc_n[1];
+    uint32_t n = 0;
+    for (int gi = 0; gi < PASS_GENS; gi++) n += s_pgen_alloc_n[gi];
     if (bytes) {
         *bytes = 0;
-        for (int gi = 0; gi < 2; gi++)
+        for (int gi = 0; gi < PASS_GENS; gi++)
             *bytes += (uint64_t)s_pgen_alloc_n[gi] * (uint64_t)s_pgen_alloc_w[gi] *
                       (uint64_t)s_pgen_alloc_h[gi] * 4u;
     }
@@ -6407,16 +6506,29 @@ static uint64_t s_present_ticks_accum_fwd(uint64_t add) {
  * for (same rect, same presented geometry) or a frame without passes. */
 static void pass_note_new_frame(int origin_x, int origin_y, int source_path,
                                 int pw, int ph) {
-    PassGen *pend = &s_pgen[1 - s_pgen_cur];
+    /* The generation the guest flipped to; without a flip seen (display
+     * start unchanged by GP1(05h) but the frame redrawn), the one built. */
+    int pi = s_pgen_flipped >= 0 ? s_pgen_flipped : s_pgen_bld;
+    PassGen *pend = &s_pgen[pi];
     if (pend->valid && !pend->promoted && pend->x == origin_x &&
         pend->y == origin_y && pend->source_path == source_path &&
         pend->tex_w == pw && pend->tex_h == ph) {
+        s_pgen_promote_idx = pi;
+        pfl_note(GL_PFL_NEW_FRAME, GL_PFL_MATCH, -1, origin_x, origin_y,
+                 source_path, pw, ph);
         s_pgen_promote = 1;
     } else {
+        pfl_note(GL_PFL_NEW_FRAME, GL_PFL_NO_MATCH, -1, origin_x, origin_y,
+                 source_path, pw, ph);
         s_pgen_promote = 0;
+        s_pgen_promote_idx = -1;
         if (s_pgen[s_pgen_cur].valid) s_pgen_unmatched++;
         s_pgen[s_pgen_cur].valid = 0;
         s_pgen[s_pgen_cur].promoted = 0;
+        if (s_pgen_flipped >= 0) {          /* shown frame is not the flipped one */
+            s_pgen[s_pgen_flipped].valid = 0;
+            s_pgen_flipped = -1;
+        }
     }
 }
 
@@ -6457,9 +6569,13 @@ static void pass_apply_promotion(void) {
     s_intervals_since_plan++;
     if (!s_pgen_promote) return;
     s_pgen_promote = 0;
+    if (s_pgen_promote_idx < 0) return;
     s_pgen[s_pgen_cur].valid = 0;
     s_pgen[s_pgen_cur].promoted = 0;
-    s_pgen_cur = 1 - s_pgen_cur;
+    s_pgen_cur = s_pgen_promote_idx;
+    s_pgen_promote_idx = -1;
+    if (s_pgen_flipped == s_pgen_cur) s_pgen_flipped = -1;
+    if (s_pgen_bld == s_pgen_cur) s_pgen_bld = pass_gen_free_index();
     {
         PassGen *g = &s_pgen[s_pgen_cur];
         double sp = s_interp_schedule.frame_end - s_interp_schedule.frame_start;
@@ -6467,6 +6583,7 @@ static void pass_apply_promotion(void) {
         g->t_start = s_interp_schedule.frame_start;
         g->t_len = (double)g->period * sp;
         s_pgen_promotions++;
+        pfl_note(GL_PFL_PROMOTED, 0, -1, g->x, g->y, g->source_path, g->tex_w, g->tex_h);
         if (s_pdump_left > 0) pass_dump_generation(s_pgen_cur);
     }
 }
@@ -6844,6 +6961,7 @@ void gl_renderer_present_vram(int disp_x, int disp_y, int w, int h, int linear,
     if (lx != 0 || ly != 0 || lw != ww || lh != wh) {
         glClearColor(0.f,0.f,0.f,1.f); glClear(GL_COLOR_BUFFER_BIT);
     }
+    s_pfl_redrawn_rect = present_dirty_test(disp_x, disp_y, disp_x + w - 1, disp_y + h - 1);
     int interp_pair = interp_capture(
         interp_fbo, src_x, disp_y, w, h, linear, force_4_3, GL_PRES_VRAM,
         disp_x, disp_y,
@@ -6983,6 +7101,13 @@ int gl_renderer_present_wide_fbo(int disp_x, int disp_y, int disp_h, int linear)
     glViewport(0, 0, ww, wh);
     if (lx != 0 || ly != 0 || lw != ww || lh != wh) {
         glClearColor(0.f, 0.f, 0.f, 1.f); glClear(GL_COLOR_BUFFER_BIT);
+    }
+    {
+        GpuDisplayInfo di;
+        gpu_get_display_info(&di);
+        s_pfl_redrawn_rect = present_dirty_test(disp_x, disp_y,
+                                                disp_x + (int)di.width - 1,
+                                                disp_y + disp_h - 1);
     }
     int interp_pair = interp_capture(
         fbo, 0, disp_y, g_wide_w, disp_h, linear, 0, GL_PRES_WIDE,
