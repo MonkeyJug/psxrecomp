@@ -316,6 +316,25 @@ uint32_t psx_mod_render_pass_plan(uint32_t period_vblanks,
     return n;
 }
 
+/* Replace passes (docs/RENDER_PASSES.md, "Replace passes"): open frame n's
+ * generation without planning phases or consulting the time budget. The next
+ * psx_mod_render_pass() with alpha_q16 == 0 captures the game's own image,
+ * runs the callback and stores the pass image in its place, so the pass image
+ * is shown for the frame's whole display time. Used for draw-only widescreen
+ * ([widescreen.cull] pass_only), where a skipped or partial frame would show
+ * the 4:3-culled image. */
+uint32_t psx_mod_render_pass_open(uint32_t period_vblanks) {
+    s_open_generation = 0;
+    if (period_vblanks == 0 || period_vblanks > 8) return 0;
+    if (!passes_allowed()) return 0;
+    if (!gl_renderer_pass_open()) return 0;
+    s_stats.plans++;
+    s_plan_serial++;
+    s_open_generation = 1;
+    s_plan_period = period_vblanks;
+    return 1;
+}
+
 /* FNV-1a step over 64-bit words, then the tail bytes. Each step is a
  * bijection of h, so a change confined to one word always changes the hash.
  * Word steps take an eighth of the time of byte steps, which keeps
@@ -486,9 +505,11 @@ int psx_mod_render_pass(struct CPUState *cpu, const PSXModRenderPass *pass,
     static uint32_t s_leaks_before;
 
     if (!cpu || !pass || !fn || pass->struct_size < sizeof *pass ||
-        pass->w == 0 || pass->h == 0 || pass->alpha_q16 == 0 ||
-        pass->alpha_q16 >= 65536u)
+        pass->w == 0 || pass->h == 0 || pass->alpha_q16 >= 65536u)
         return 0;
+    /* alpha 0 = replace frame n's own image: only as the first pass of a
+     * generation opened by psx_mod_render_pass_open() (or a plan). */
+    if (pass->alpha_q16 == 0 && !s_open_generation) return 0;
     if (!passes_allowed()) return 0;
 
     /* An overlay DLL may still hold cycles it has not published. They belong

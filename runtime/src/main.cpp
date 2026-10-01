@@ -13175,6 +13175,7 @@ int main(int argc, char** argv) {
              * cleanup of synthetic native-wide margins. */
             gpu_ws_set_clear_reveal(gc.ws_clear_reveal ? 1 : 0);
             gpu_ws_set_cull_guard_pixels(gc.ws_cull_guard_pixels);
+            gpu_ws_set_cull_pass_only(gc.ws_cull_pass_only ? 1 : 0);
             gpu_ws_set_activation_guard_pixels(
                 gc.ws_cull_activation_guard_pixels);
             gpu_ws_set_explicit_cull_sites(

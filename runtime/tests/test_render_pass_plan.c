@@ -124,6 +124,19 @@ static void test_select(void) {
 /* A frame on screen longer than planned (a 30 Hz tick that takes three
  * VBlanks) keeps its newest image until the next flip; it must never go back
  * to the game's own image (phase 0), which is older. */
+/* Replace pass: one slot at phase 0 holds for the whole frame and a late one. */
+static void test_select_replace(void) {
+    const uint32_t ph[1] = {0};
+    uint32_t lo = 9, hi = 9;
+    float t = 1.0f;
+    double p;
+    for (p = 0.0; p < 1.0; p += 0.125)
+        CHECK(render_pass_select(ph, 1, p, &lo, &hi, &t) && lo == 0 && hi == 0 &&
+              t == 0.0f, "replace: slot 0 at every phase of the frame");
+    CHECK(render_pass_gen_select(ph, 1, 1.75, &lo, &hi, &t) && lo == 0 && hi == 0,
+          "replace: slot 0 still shown when the next frame is late");
+}
+
 static void test_gen_select_late(void) {
     const uint32_t ph[] = {0u, 16384u, 32768u, 49152u};
     const double late[] = {1.0, 1.25, 1.2501, 1.3, 1.5, 2.0, 3.99,
@@ -296,6 +309,7 @@ static void test_store_policy(void) {
 }
 
 int main(void) {
+    test_select_replace();
     test_store_policy();
     test_counts_per_rate();
     test_shedding();

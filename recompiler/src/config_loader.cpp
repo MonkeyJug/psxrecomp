@@ -1774,6 +1774,7 @@ GameConfig load_game_config(const fs::path& config_path_in) {
     std::vector<WidescreenAngleSite> ws_cull_angle_sites;
     WidescreenAspectConeConfig ws_aspect_cone;
     int ws_cull_guard_pixels = 0;
+    bool ws_cull_pass_only = false;
     int ws_cull_activation_guard_pixels = 0;
     // Cull-signature immediates (screen_w_imms / screen_h_imms). Defaults are
     // the original Tomba signature (320-display: 0x140/0x141 + 0xE0/0xF1); a
@@ -2061,6 +2062,8 @@ GameConfig load_game_config(const fs::path& config_path_in) {
                     ws_aspect_cone.sites.push_back(site);
                 }
             }
+            if (cull.contains("pass_only"))
+                ws_cull_pass_only = toml::find<bool>(cull, "pass_only");
             if (cull.contains("guard_pixels")) {
                 ws_cull_guard_pixels = toml::find<int>(cull, "guard_pixels");
                 if (ws_cull_guard_pixels < 0 || ws_cull_guard_pixels > 256)
@@ -2301,6 +2304,7 @@ GameConfig load_game_config(const fs::path& config_path_in) {
     loaded.ws_cull_clip_edge_x_load_sites =
         std::move(ws_cull_clip_edge_x_load_sites);
     loaded.ws_cull_clip_edge_width = ws_cull_clip_edge_width;
+    loaded.ws_cull_pass_only = ws_cull_pass_only;
     return loaded;
 }
 

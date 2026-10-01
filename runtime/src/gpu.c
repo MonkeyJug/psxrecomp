@@ -46,6 +46,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "psx_cycle_freeze.h"   /* g_psx_render_pass_active ([widescreen.cull] pass_only) */
 
 /* Word-aligned main-RAM key for a primitive/OT address through the live
  * geometry (retail: the DMAC's 0x1FFFFC fold). */
@@ -1133,8 +1134,22 @@ int psx_ws_aspect_cone_site(CPUState *cpu, uint32_t pc, uint32_t instr,
     return 1;
 }
 
+/* [widescreen.cull] pass_only: the cull margin is live only inside a render
+ * pass. Some games feed what the cull marks visible back into their
+ * simulation (Winning Eleven 2002 stores transforms for visible objects that
+ * gameplay reads), so a widened cull would change the game. With pass_only
+ * the game runs every frame with the 4:3 cull (margin 0 here) and a trusted
+ * plugin redraws the frame inside a render pass, where the margin is live;
+ * the pass is rolled back bit-for-bit, so the simulation never sees it.
+ * Presentation (native-wide surface, HUD, present aspect) does not read this
+ * margin and stays wide. Off by default. */
+static int ws_cull_pass_only = 0;
+void gpu_ws_set_cull_pass_only(int on) { ws_cull_pass_only = on ? 1 : 0; }
+int psx_ws_cull_pass_only(void) { return ws_cull_pass_only; }
+
 int psx_ws_x_margin(void) {
     if (ws_margin_override >= 0) return ws_margin_override;
+    if (ws_cull_pass_only && !g_psx_render_pass_active) return 0;
     /* Native-wide: widen the world-space draw cull by the per-side reveal
      * (== the centering OFFSET in screen px) so the game SUBMITS the geometry
      * that previously fell outside the 4:3 cull window; the wide compositor then

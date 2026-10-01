@@ -53,6 +53,7 @@ uint32_t gl_renderer_pass_unavailable(void);
  * render_pass_refuse over TCP), as a renderer mode without them would. */
 void     gl_renderer_pass_force_refuse(int on);
 /* Phases the presenter will show for the frame the next flip displays. */
+int      gl_renderer_pass_open(void);
 uint32_t gl_renderer_pass_plan(uint32_t period_vblanks,
                                uint32_t shown_after_vblanks,
                                uint32_t *alpha_q16, uint32_t max,

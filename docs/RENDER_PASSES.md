@@ -164,6 +164,41 @@ captures). Their textures are made as the slots fill, never more slots than
 two generations fit in 256 MiB, which limits passes per frame at very high
 internal resolutions; a size change frees the old set.
 
+## Replace passes (draw-only widening)
+
+A replace pass shows the pass image for the frame's **whole** display time
+instead of an in-between phase. It exists for widescreen in games whose
+simulation reads what the cull marked visible: Winning Eleven 2002 stores
+transforms for visible players that gameplay uses, so a widened cull changes
+the match. With `[widescreen.cull] pass_only = true` the cull margin is 0
+outside a pass (the game runs exactly as at 4:3) and live inside one, so a
+plugin can redraw the frame with the widened cull and the rollback discards
+everything that redraw wrote.
+
+```c
+if (psx_mod_render_pass_open(period_vblanks)) {      /* 1 = generation open */
+    PSXModRenderPass p = { sizeof p, 0 /* replace */, x, y, w, h };
+    psx_mod_render_pass(cpu, &p, redraw_fn, NULL);
+}
+```
+
+- `psx_mod_render_pass_open()` opens frame n's generation with the plan's
+  gates (OpenGL, FLIP source, interpolation on, not netplay/turbo/fast-forward,
+  live presenter) but plans no phases and applies **no time budget**: the
+  frame is redrawn every time or not at all, never shed for cost.
+- The following `psx_mod_render_pass()` with `alpha_q16 == 0` captures the
+  game's image into slot 0 as usual, runs `redraw_fn` and, when kept, captures
+  the pass image **into slot 0**. With one slot at phase 0 the presenter shows
+  it at every output deadline of the frame and holds it if the next frame is
+  late (`render_pass_gen_select`). A replace pass without an open generation,
+  or a second one in the same generation, is refused.
+- The rect is the DISPENV the next flip shows, as for any pass. Call from a
+  function-entry hook placed after the game has drawn frame n into that buffer
+  and before it starts tick n+1's logic, so the redraw sees frame n's state.
+- Verification: `PSX_RENDER_PASS_VERIFY=1` hashes the machine before and after
+  every pass, and `frame_fingerprint` (tools/fp_identity.py) with the feature
+  on and off must agree: the simulation never sees the widened cull.
+
 ## Verifying a title
 
 - `render_pass_stats` (TCP): passes, shedding, faults, dropped device

@@ -294,7 +294,8 @@ typedef int (*PSXModRenderPassFn)(struct CPUState* cpu, void* user,
                                   uint32_t alpha_q16);
 typedef struct PSXModRenderPass {
     uint32_t struct_size;        /* sizeof(PSXModRenderPass) */
-    uint32_t alpha_q16;          /* a phase returned by the plan */
+    uint32_t alpha_q16;          /* a phase returned by the plan, or 0 for a
+                                    replace pass after psx_mod_render_pass_open */
     uint16_t x, y, w, h;         /* VRAM display rect the pass draws */
 } PSXModRenderPass;
 /*
@@ -339,6 +340,12 @@ enum {
     PSX_MOD_RENDER_PASS_BUSY = 6
 };
 uint32_t psx_mod_render_pass_status(void);
+/* Replace pass: open frame n's generation without phases or budget; 1 = open.
+ * Follow with one psx_mod_render_pass() whose alpha_q16 is 0: the pass image
+ * then replaces the game's own image for the frame's whole display time.
+ * Same gates as a plan (OpenGL, FLIP-source interpolation, not netplay/turbo).
+ * docs/RENDER_PASSES.md "Replace passes". */
+uint32_t psx_mod_render_pass_open(uint32_t period_vblanks);
 int psx_mod_set_auto_skip_fmv(int enabled);
 /*
  * Draw still artwork behind the game image in OpenGL letterbox/pillarbox

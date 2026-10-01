@@ -364,6 +364,13 @@ model queues have fixed capacity. Both values are restricted to `[0, 256]`
 and contribute to native-overlay cache identity. Changing the activation
 guard requires regenerating the game and overlay code.
 
+`pass_only = true` (bool, default false) makes the cull margin live only inside a
+render pass (`g_psx_render_pass_active`): outside one every cull site sees
+margin 0 and behaves exactly as at 4:3. It is for games whose simulation reads
+cull side effects, paired with a plugin that redraws each frame in a replace
+pass (RENDER_PASSES.md, "Replace passes"). Runtime-only: no regen, not part of
+the overlay cache identity.
+
 ## Runtime block
 
 Consumed by the cmake macro `psxrecomp_v4_add_runtime_target` (eventually)

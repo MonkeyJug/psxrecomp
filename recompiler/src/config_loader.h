@@ -1215,6 +1215,12 @@ struct GameConfig {
     // [widescreen.cull] clip_edge_width -- the screen width a right-edge clip
     // bound equals. 0 = the first screen_w_imms entry (0x140 by default).
     uint32_t ws_cull_clip_edge_width = 0;
+    // [widescreen.cull] pass_only -- the cull margin is live only inside a
+    // render pass (docs/RENDER_PASSES.md, "Draw-only widening"). The game
+    // runs every frame with the 4:3 cull; a trusted plugin redraws the frame
+    // in a replace pass where the margin applies. Runtime-only: no codegen
+    // effect, so it is not part of the overlay cache identity. Default off.
+    bool ws_cull_pass_only = false;
 };
 
 // Effective clip_edge_width: explicit value, else screen_w_imms[0], else 320.

@@ -5851,6 +5851,24 @@ static uint32_t pass_slot_cap(int tex_w, int tex_h) {
     return cap;
 }
 
+/* Replace-pass generation (psx_mod_render_pass_open): close this frame's
+ * host-time books as a plan does, and confirm a live presenter, without
+ * planning phases or applying the pass budget. */
+int gl_renderer_pass_open(void) {
+    int live;
+    s_idle_ticks_last = s_idle_ticks_accum;
+    s_pass_ticks_last = s_pass_ticks_accum;
+    s_present_ticks_last = s_present_ticks_accum;
+    s_idle_ticks_accum = s_pass_ticks_accum = s_present_ticks_accum = 0;
+    live = s_intervals_since_plan > 0;   /* turbo/headless present nothing */
+    s_intervals_since_plan = 0;
+    if (!gl_renderer_pass_ready() || !live) return 0;
+    if (s_interp_schedule.target_period <= 0.0 ||
+        s_interp_schedule.source_deadline <= 0.0)
+        return 0;
+    return pass_slot_cap(s_interp_w, s_interp_h) >= 1u;
+}
+
 uint32_t gl_renderer_pass_plan(uint32_t period_vblanks,
                                uint32_t shown_after_vblanks,
                                uint32_t *alpha_q16, uint32_t max,
@@ -6236,7 +6254,10 @@ void gl_renderer_pass_end(uint32_t alpha_q16, int keep) {
     flush_flat_batch();
     flush_tex_batch();
     flush_cpu_upload();
-    if (keep && alpha_q16 && g->valid && !g->promoted && g->n < PASS_SLOTS &&
+    if (keep && alpha_q16 == 0 && g->valid && !g->promoted && g->n >= 1u) {
+        /* Replace pass: the pass image becomes the frame's own image. */
+        pass_capture_into(s_pgen_tex[gi][0], g);
+    } else if (keep && alpha_q16 && g->valid && !g->promoted && g->n < PASS_SLOTS &&
         g->n < pass_slot_cap(g->tex_w, g->tex_h) &&
         pass_gen_reserve(gi, g->n + 1u, g->tex_w, g->tex_h)) {
         /* Passes arrive in ascending phase; keep the list sorted anyway. */

@@ -121,6 +121,15 @@ native recompiler and the dirty-RAM interpreter: regenerate main/overlay native
 code after changing it, while the interpreter reads the same guarded records
 from the runtime config.
 
+### Draw-only widening (`pass_only`)
+
+Every `[widescreen.cull]` site widens whenever the margin is live, so the game
+itself runs with the widened cull. Where the simulation consumes what the cull
+marks visible (per-object transforms, "on screen" flags), that changes the
+game. `pass_only = true` keeps the margin at 0 outside render passes; a title
+plugin then redraws each frame in a replace pass with the margin live
+(RENDER_PASSES.md, "Replace passes"). Requires OpenGL with interpolation on.
+
 ### Explicit screen-X cull sites
 
 When a title's per-vertex screen-X rejects are not the shapes

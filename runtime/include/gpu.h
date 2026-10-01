@@ -244,6 +244,9 @@ int  gpu_ws_present_native_43(void);
  * cull immediates by the recompiler ([widescreen.cull]); 0 unless stretching. */
 int  psx_ws_x_margin(void);
 void gpu_ws_set_cull_guard_pixels(int pixels);
+/* [widescreen.cull] pass_only: cull margin live only inside a render pass. */
+void gpu_ws_set_cull_pass_only(int on);
+int  psx_ws_cull_pass_only(void);
 /* Bias/range activation-window margin. This may include an additional
  * resident-object lead while render/terrain paths retain psx_ws_x_margin(). */
 int  psx_ws_activation_margin(void);

@@ -193,16 +193,20 @@ uint32_t gl_renderer_pass_plan(uint32_t p, uint32_t s, uint32_t *a,
     if (wanted) *wanted = 0;
     return 0;
 }
-static int s_open_passes, s_kept;
+static int s_gl_open_ok = 1, s_gl_opens;
+int gl_renderer_pass_open(void) { s_gl_opens++; return s_gl_open_ok; }
+static int s_open_passes, s_kept, s_last_begin_open = -1;
+static uint32_t s_last_end_alpha = 0xFFFFFFFFu;
 int gl_renderer_pass_begin(int x, int y, int w, int h, int open_gen,
                            uint32_t period, int reuse_backup) {
-    (void)x; (void)y; (void)w; (void)h; (void)open_gen; (void)period;
+    (void)x; (void)y; (void)w; (void)h; (void)period;
     (void)reuse_backup;
+    s_last_begin_open = open_gen;
     s_open_passes++;
     return 1;
 }
 void gl_renderer_pass_end(uint32_t alpha_q16, int keep) {
-    (void)alpha_q16;
+    s_last_end_alpha = alpha_q16;
     s_open_passes--;
     if (keep) s_kept++;
 }
@@ -557,9 +561,55 @@ static void test_journal(void) {
 #undef POLICY
 }
 
+/* ---- 2c. replace pass (draw-only widescreen) ------------------------------ */
+static int replace_fn(struct CPUState *cpu, void *user, uint32_t alpha_q16) {
+    int *seen = (int *)user;
+    *seen = (int)alpha_q16 + 1;
+    cpu->gpr[10] = 0x1234u;
+    guest_store(0x80010000u, 0x99u, 1);
+    return 1;
+}
+
+static void test_replace(void) {
+    CPUState cpu;
+    PSXModRenderPass pass;
+    int seen = 0, kept0 = s_kept;
+    uint8_t before;
+
+    memset(&cpu, 0, sizeof cpu);
+    cpu.gpr[10] = 0x77u;
+    memset(&pass, 0, sizeof pass);
+    pass.struct_size = sizeof pass;
+    pass.w = 320; pass.h = 240;
+    pass.alpha_q16 = 0;
+    before = s_ram[0x10000];
+
+    CHECK(psx_mod_render_pass(&cpu, &pass, replace_fn, &seen) == 0 && seen == 0,
+          "replace refused without an open generation");
+    CHECK(psx_mod_render_pass_open(0) == 0 && psx_mod_render_pass_open(9) == 0,
+          "open refuses a period outside 1..8");
+    s_gl_open_ok = 0;
+    CHECK(psx_mod_render_pass_open(2) == 0, "open refused while the presenter is not live");
+    s_gl_open_ok = 1;
+    CHECK(psx_mod_render_pass_open(2) == 1, "open succeeds when ready");
+    CHECK(psx_mod_render_pass(&cpu, &pass, replace_fn, &seen) == 1 && seen == 1,
+          "replace pass ran with alpha 0");
+    CHECK(s_last_begin_open == 1 && s_last_end_alpha == 0 && s_kept == kept0 + 1,
+          "renderer captured frame n and kept the pass at alpha 0 (slot 0)");
+    CHECK(cpu.gpr[10] == 0x77u && s_ram[0x10000] == before,
+          "CPU and RAM restored after the replace pass");
+    seen = 0;
+    CHECK(psx_mod_render_pass(&cpu, &pass, replace_fn, &seen) == 0 && seen == 0,
+          "a second replace in the same generation is refused");
+    s_fast_forward = 1;
+    CHECK(psx_mod_render_pass_open(2) == 0, "open follows the pass gates (fast-forward)");
+    s_fast_forward = 0;
+}
+
 int main(void) {
     test_store_policy();
     test_pass();
+    test_replace();
     test_ram_8mb();
     test_journal();
     printf(failures ? "FAILED (%d)\n" : "ALL PASS\n", failures);
