@@ -2267,10 +2267,23 @@ static int32_t ws_disp_h(void) {
 /* Full-screen fades and environmental filters are authored as 320x240 TILEs.
  * In native-wide mode, grow only primitives that cover the complete native
  * display; ordinary world-space rectangles remain untouched. */
+/* Draw area and offset, defined with the GP0(E3h)-(E5h) state further down. */
+static uint32_t draw_area_left, draw_area_top;
+static int32_t draw_offset_x, draw_offset_y;
+
 static void ws_expand_fullscreen_rect(int32_t *x, int32_t y, int *w, int h) {
     if (!ws_native_wide_active()) return;
-    int X = (int)ws_disp_x(), W = (int)ws_disp_w(), H = (int)ws_disp_h();
-    if (*x <= X && *x + *w >= X + W && y <= 0 && y + h >= H) {
+    /* Measure against the buffer being drawn, not the screen origin: a game
+     * that double-buffers with the buffers stacked in VRAM (WE2002: (0,0) and
+     * (0,240)) draws every other frame's fade at y = 240 - overscan, and the
+     * old "y <= 0" test (on pre-offset coordinates) left its fades and camera
+     * flashes 4:3-wide in the strips. */
+    /* Callers pass pre-offset coordinates; games that centre the drawing
+     * offset (WE2002: (256,120)/(256,360)) author the fade around it. */
+    const int ax = (int)*x + (int)draw_offset_x, ay = (int)y + (int)draw_offset_y;
+    const int X = (int)draw_area_left, Y = (int)draw_area_top;
+    const int W = (int)ws_disp_w(), H = (int)ws_disp_h();
+    if (ax <= X && ax + *w >= X + W && ay <= Y && ay + h >= Y + H) {
         int off = ws_nw_offset();
         *x -= off;
         *w += 2 * off;
