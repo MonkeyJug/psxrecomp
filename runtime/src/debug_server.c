@@ -8032,6 +8032,17 @@ static void handle_render_pass_flip_log(int id, const char *json)
     free(out);
 }
 
+/* render_pass_replace_keep on=<0|1>: debug for replace passes. While on, a
+ * replace pass keeps the game's own image in slot 0 and stores the pass image
+ * as slot 1, so render_pass_dump writes both images of the same frame (the
+ * presenter shows the game's image meanwhile). */
+static void handle_render_pass_replace_keep(int id, const char *json)
+{
+    int on = json_get_int(json, "on", 1);
+    gl_renderer_pass_replace_keep(on);
+    send_fmt("{\"id\":%d,\"ok\":true,\"on\":%d}", id, on ? 1 : 0);
+}
+
 /* render_pass_refuse on=<0|1>: make the OpenGL backend decline render passes
  * (status BACKEND), as a renderer mode without them would; for testing a
  * plugin's fallback. Same as PSX_RENDER_PASS_REFUSE=1 at start. */
@@ -14085,6 +14096,7 @@ static const CmdEntry s_commands[] = {
     { "render_pass_stats", handle_render_pass_stats },
     { "render_pass_dump",  handle_render_pass_dump },
     { "render_pass_flip_log", handle_render_pass_flip_log },
+    { "render_pass_replace_keep", handle_render_pass_replace_keep },
     { "render_pass_refuse", handle_render_pass_refuse },
     { "gl_wide_fast",      handle_gl_wide_fast },
     { "synth_recurse",     handle_synth_recurse },

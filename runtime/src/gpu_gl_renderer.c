@@ -5780,6 +5780,7 @@ static int      s_pgen_alloc_w[PASS_GENS], s_pgen_alloc_h[PASS_GENS];
 static int      s_pgen_cur = 0, s_pgen_bld = 1, s_pgen_flipped = -1;
 static int      s_pgen_promote = 0, s_pgen_promote_idx = -1;
 static uint64_t s_pgen_flip_bound = 0, s_pgen_flip_dropped = 0;
+static int      s_pass_replace_keep_game = 0;   /* debug: see render_pass_replace_keep */
 /* The index that is neither on screen nor flipped-to. */
 static int pass_gen_free_index(void) {
     for (int i = 0; i < PASS_GENS; i++)
@@ -6311,7 +6312,16 @@ void gl_renderer_pass_end(uint32_t alpha_q16, int keep) {
     flush_flat_batch();
     flush_tex_batch();
     flush_cpu_upload();
-    if (keep && alpha_q16 == 0 && g->valid && !g->promoted && g->n >= 1u) {
+    if (keep && alpha_q16 == 0 && g->valid && !g->promoted && g->n >= 1u &&
+        s_pass_replace_keep_game && g->n < PASS_SLOTS &&
+        pass_gen_reserve(gi, g->n + 1u, g->tex_w, g->tex_h)) {
+        /* Debug (render_pass_replace_keep on=1): keep the game's own image in
+         * slot 0 and add the pass image as slot 1, so render_pass_dump can
+         * write both images of one frame. The presenter then shows slot 0. */
+        pass_capture_into(s_pgen_tex[gi][g->n], g);
+        g->phase[g->n] = 65535u;
+        g->n++;
+    } else if (keep && alpha_q16 == 0 && g->valid && !g->promoted && g->n >= 1u) {
         /* Replace pass: the pass image becomes the frame's own image. */
         pass_capture_into(s_pgen_tex[gi][0], g);
     } else if (keep && alpha_q16 && g->valid && !g->promoted && g->n < PASS_SLOTS &&
@@ -6472,6 +6482,7 @@ void gl_renderer_pass_diag(uint64_t out[10]) {
     out[9] = s_pass_cost_rewarms;
 }
 
+void gl_renderer_pass_replace_keep(int on) { s_pass_replace_keep_game = on != 0; }
 uint64_t gl_renderer_pass_journaled(void) { return s_pj_total; }
 void gl_renderer_pass_flip_counts(uint64_t *bound, uint64_t *dropped) {
     if (bound) *bound = s_pgen_flip_bound;

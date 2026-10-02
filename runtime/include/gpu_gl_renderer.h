@@ -109,6 +109,8 @@ uint32_t gl_renderer_pass_flip_log(GlPassFlipLogRec *out, uint32_t max);
 void     gl_renderer_pass_note_flip(int x, int y);
 /* Generations bound at a guest flip, and bound ones dropped unshown. */
 void     gl_renderer_pass_flip_counts(uint64_t *bound, uint64_t *dropped);
+/* Debug: replace passes keep the game's image in slot 0, pass image in slot 1. */
+void     gl_renderer_pass_replace_keep(int on);
 /* Debug: dump the images of the next `generations` shown frames as PNGs. */
 void     gl_renderer_pass_dump_arm(const char *dir, int generations);
 uint64_t gl_renderer_perf_ticks(void);
