@@ -1137,6 +1137,10 @@ struct GameConfig {
     // the wide view. Opt-in: only for titles proven to store GTE SXY words
     // unmasked in their packets. Identity at 4:3 and on 4:3-presented frames.
     bool ws_sx_headroom = false;
+    /* [widescreen] sx_headroom_unbounded_in_pass: inside a render pass only,
+     * no GTE SX2 clamp, 16-bit GPU vertex X and no 1023 px primitive-width
+     * rejection (see docs/config_schema.md). Requires sx_headroom. */
+    bool ws_sx_headroom_unbounded_in_pass = false;
 
     // [[widescreen.signed_x_bound]] guarded LUI signed-Q16 bounds or ADDIU/ORI
     // rt,zero,imm screen-pixel bounds. Both remain identity in 4:3/menus/FMV.

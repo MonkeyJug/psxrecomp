@@ -13138,6 +13138,7 @@ int main(int argc, char** argv) {
             gpu_ws_set_gte_game_mode(gc.ws_gte_game_mode ? 1 : 0);
             /* [widescreen] sx_headroom — GTE SX2 clamp + vertex-X decode headroom. */
             gpu_ws_set_sx_headroom(gc.ws_sx_headroom ? 1 : 0);
+            gpu_ws_set_sx_headroom_unbounded_in_pass(gc.ws_sx_headroom_unbounded_in_pass ? 1 : 0);
             gpu_ws_set_precise_nclip(gc.ws_precise_nclip ? 1 : 0);
             gpu_ws_set_gameplay_state_gate(
                 gc.ws_gameplay_state_addr,

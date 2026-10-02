@@ -259,6 +259,9 @@ void gpu_ws_set_gte_game_mode(int on) { ws_gte_game_mode_cfg = on ? 1 : 0; }
 static int ws_sx_headroom_cfg = 0;
 void gpu_ws_set_sx_headroom(int on) { ws_sx_headroom_cfg = on ? 1 : 0; }
 int  gpu_ws_sx_headroom_enabled(void) { return ws_sx_headroom_cfg; }
+static int ws_sx_headroom_unbounded_cfg = 0;
+void gpu_ws_set_sx_headroom_unbounded_in_pass(int on) { ws_sx_headroom_unbounded_cfg = on ? 1 : 0; }
+int  gpu_ws_sx_headroom_unbounded_in_pass(void) { return ws_sx_headroom_unbounded_cfg; }
 void gpu_pgxp_rederive_enable(void);
 void gpu_ws_set_precise_nclip(int on) {
     ws_precise_nclip_cfg = on ? 1 : 0;
@@ -3641,9 +3644,12 @@ static int32_t sign_extend(uint32_t val, int bits) {
  * legitimately carry |x| in 1024..2047 there. Every value a real GPU accepts
  * (11-bit, sign-extended into the halfword by the GTE) decodes identically. */
 extern int gte_ws_sx_headroom(void);
+int psx_gpu_ws_unbounded_x(void) { return gte_ws_sx_headroom() > 1023; }
 static void parse_vertex(uint32_t word, int32_t* x, int32_t* y) {
-    if (gte_ws_sx_headroom() > 0) *x = sign_extend(word & 0xFFFu, 12);
-    else                          *x = sign_extend(word & 0x7FFu, 11);
+    const int headroom = gte_ws_sx_headroom();
+    if (headroom > 1023)   *x = sign_extend(word & 0xFFFFu, 16);  /* unbounded, in a pass */
+    else if (headroom > 0) *x = sign_extend(word & 0xFFFu, 12);
+    else                   *x = sign_extend(word & 0x7FFu, 11);
     *y = sign_extend((word >> 16) & 0x7FFu, 11);
 }
 

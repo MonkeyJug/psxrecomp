@@ -197,6 +197,8 @@ extern "C" int psx_ws_x_margin(void);           /* gpu.c — live per-side wide 
 static int s_ws_sx_headroom = 0;
 extern "C" int gte_ws_sx_headroom(void) { return s_ws_sx_headroom; }
 extern "C" int gpu_ws_sx_headroom_enabled(void);   /* gpu.c — [widescreen] sx_headroom */
+extern "C" int gpu_ws_sx_headroom_unbounded_in_pass(void);
+extern "C" int g_psx_render_pass_active;
 static inline void gte_ws_refresh_sx_headroom(void) {
     /* While the wide margin is live, use the widest clamp the GPU's 12-bit
      * vertex-X decode can carry (-2048..2047). Restoring only the hardware-
@@ -204,7 +206,14 @@ static inline void gte_ws_refresh_sx_headroom(void) {
      * rows at the wide edges: those quads were never partially visible at 4:3,
      * so the game's FLAG cull was never tuned for them. */
     int live = gpu_ws_sx_headroom_enabled() && !gpu_ws_present_native_43() && psx_ws_x_margin() > 0;
-    s_ws_sx_headroom = live ? 1023 : 0;
+    /* sx_headroom_unbounded_in_pass: inside a render pass (whose writes are
+     * all rolled back) let X use the whole 16-bit SXY field, so a polygon
+     * reaching far past the wide edge keeps its true shape instead of being
+     * FLAG-culled by the game (WE2002 touchlines during camera pans). */
+    if (live && g_psx_render_pass_active && gpu_ws_sx_headroom_unbounded_in_pass())
+        s_ws_sx_headroom = 0x7FFF - 0x400;
+    else
+        s_ws_sx_headroom = live ? 1023 : 0;
 }
 extern "C" void psx_ws_note_gte_project(int nverts);  /* gpu.c — gte_game_mode stamp */
 static int s_gte_replay_sandbox = 0;

@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+/* gpu.c: nonzero inside a render pass with sx_headroom_unbounded_in_pass. */
+int psx_gpu_ws_unbounded_x(void);
+
 /* PS1 hardware primitive-size rejection. Parsed coordinates are checked before
  * widescreen transforms and draw offsets; offsets do not change distances.
  * Quads are tested as their two rendered triangles independently. */
@@ -14,7 +17,7 @@ static inline int psx_gpu_triangle_oversize(const int32_t* vx,
     if (vx[b] > maxx) maxx = vx[b];
     if (vx[c] < minx) minx = vx[c];
     if (vx[c] > maxx) maxx = vx[c];
-    if (maxx - minx > 1023) return 1;
+    if (maxx - minx > 1023 && !psx_gpu_ws_unbounded_x()) return 1;
 
     int32_t miny = vy[a], maxy = vy[a];
     if (vy[b] < miny) miny = vy[b];
@@ -28,7 +31,7 @@ static inline int psx_gpu_line_oversize(int32_t x0, int32_t y0,
                                         int32_t x1, int32_t y1) {
     int32_t dx = x0 > x1 ? x0 - x1 : x1 - x0;
     int32_t dy = y0 > y1 ? y0 - y1 : y1 - y0;
-    return dx > 1023 || dy > 511;
+    return (dx > 1023 && !psx_gpu_ws_unbounded_x()) || dy > 511;
 }
 
 #endif

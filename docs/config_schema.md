@@ -390,6 +390,15 @@ exact at 4:3 and on 4:3-presented frames. Opt in only for a title proven to
 copy GTE SXY words into its packets unmasked (a game that masks X to 11 bits
 before storing would decode negatives wrongly).
 
+`sx_headroom_unbounded_in_pass = true` (requires `sx_headroom`) goes further
+inside a render pass only: no GTE SX2 clamp (the whole 16-bit SXY field), the
+GPU decodes vertex X as 16-bit, and the 1023 px primitive-width rejection is
+lifted (the 511 px height rule stays). A polygon reaching far past the wide
+edge then keeps its true shape instead of being FLAG-culled by the game or
+dropped as oversized. Everything a pass draws is rolled back, so the game
+never sees the difference (WE2002: touchlines drawn late during camera pans).
+Runtime-only.
+
 ## Runtime block
 
 Consumed by the cmake macro `psxrecomp_v4_add_runtime_target` (eventually)
