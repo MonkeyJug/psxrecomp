@@ -54,6 +54,8 @@ int render_pass_select(const uint32_t *phases, uint32_t n, double p,
 /* How long a promoted generation stays on screen without the next flip, in
  * frame lengths (phase units), before it expires. */
 #define RENDER_PASS_GEN_HOLD_MAX 4.0
+/* Upper bound a title plugin may raise the hold to (psx_mod_set_render_pass_hold). */
+#define RENDER_PASS_GEN_HOLD_LIMIT 64.0
 
 /* What a promoted generation shows at phase p: render_pass_select, except
  * that it expires (returns 0) past RENDER_PASS_GEN_HOLD_MAX or for a p that
@@ -64,6 +66,9 @@ int render_pass_select(const uint32_t *phases, uint32_t n, double p,
  * game that stops flipping for several frame lengths gets that back. */
 int render_pass_gen_select(const uint32_t *phases, uint32_t n, double p,
                            uint32_t *lo, uint32_t *hi, float *t);
+/* render_pass_gen_select with an explicit hold (frame lengths). */
+int render_pass_gen_select_hold(const uint32_t *phases, uint32_t n, double p,
+                                double hold, uint32_t *lo, uint32_t *hi, float *t);
 
 /* Exponential moving average used for the per-pass host cost. */
 double render_pass_ema(double current, double sample);

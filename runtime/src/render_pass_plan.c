@@ -113,7 +113,15 @@ int render_pass_select(const uint32_t *phases, uint32_t n, double p,
 
 int render_pass_gen_select(const uint32_t *phases, uint32_t n, double p,
                            uint32_t *lo, uint32_t *hi, float *t) {
-    if (!(p <= RENDER_PASS_GEN_HOLD_MAX)) return 0;
+    return render_pass_gen_select_hold(phases, n, p, RENDER_PASS_GEN_HOLD_MAX,
+                                       lo, hi, t);
+}
+
+int render_pass_gen_select_hold(const uint32_t *phases, uint32_t n, double p,
+                                double hold, uint32_t *lo, uint32_t *hi, float *t) {
+    if (!(hold >= RENDER_PASS_GEN_HOLD_MAX)) hold = RENDER_PASS_GEN_HOLD_MAX;
+    if (hold > RENDER_PASS_GEN_HOLD_LIMIT) hold = RENDER_PASS_GEN_HOLD_LIMIT;
+    if (!(p <= hold)) return 0;
     return render_pass_select(phases, n, p, lo, hi, t);
 }
 

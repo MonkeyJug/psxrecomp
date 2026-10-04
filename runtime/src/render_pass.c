@@ -16,6 +16,7 @@
  * (psx_mod_render_pass_status says which). */
 
 #include "render_pass.h"
+#include "render_pass_plan.h"
 
 #include <setjmp.h>
 #include <stdio.h>
@@ -323,6 +324,17 @@ uint32_t psx_mod_render_pass_plan(uint32_t period_vblanks,
  * is shown for the frame's whole display time. Used for draw-only widescreen
  * ([widescreen.cull] pass_only), where a skipped or partial frame would show
  * the 4:3-culled image. */
+static volatile uint32_t s_pass_hold = 0;   /* frame lengths, 0 = default */
+
+void psx_mod_set_render_pass_hold(uint32_t frame_lengths) {
+    s_pass_hold = frame_lengths;
+}
+
+double render_pass_hold_frames(void) {
+    const uint32_t h = s_pass_hold;
+    return h ? (double)h : RENDER_PASS_GEN_HOLD_MAX;
+}
+
 uint32_t psx_mod_render_pass_open(uint32_t period_vblanks) {
     s_open_generation = 0;
     if (period_vblanks == 0 || period_vblanks > 8) return 0;

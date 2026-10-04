@@ -160,6 +160,16 @@ static void test_gen_select_late(void) {
     CHECK(!render_pass_gen_select(ph, 4, NAN, &lo, &hi, &t),
           "a phase that is not a number expires it");
     CHECK(!render_pass_gen_select(ph, 0, 0.5, &lo, &hi, &t), "no items, no pick");
+    /* A raised hold (psx_mod_set_render_pass_hold) keeps the newest image
+     * longer, never shorter than the default, and is capped. */
+    CHECK(render_pass_gen_select_hold(ph, 4, 12.0, 16.0, &lo, &hi, &t) &&
+          lo == 3 && hi == 3, "raised hold: a late flip at 12 still holds");
+    CHECK(!render_pass_gen_select_hold(ph, 4, 16.5, 16.0, &lo, &hi, &t),
+          "raised hold: expires past it");
+    CHECK(!render_pass_gen_select_hold(ph, 4, 4.5, 1.0, &lo, &hi, &t),
+          "a hold below the default is the default");
+    CHECK(!render_pass_gen_select_hold(ph, 4, 70.0, 1000.0, &lo, &hi, &t),
+          "the hold is capped at RENDER_PASS_GEN_HOLD_LIMIT");
 }
 
 static void test_budget_and_ema(void) {

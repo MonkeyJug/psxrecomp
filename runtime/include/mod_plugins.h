@@ -346,6 +346,17 @@ uint32_t psx_mod_render_pass_status(void);
  * Same gates as a plan (OpenGL, FLIP-source interpolation, not netplay/turbo).
  * docs/RENDER_PASSES.md "Replace passes". */
 uint32_t psx_mod_render_pass_open(uint32_t period_vblanks);
+/*
+ * How long the presenter keeps showing a replace/phase generation's newest
+ * image while the game's next flip is late, in frame lengths (default 4, see
+ * RENDER_PASS_GEN_HOLD_MAX; 0 restores it; capped at 64). Past the hold the
+ * generation expires and the presenter shows the game's own image. A title
+ * whose own image differs from its pass images (draw-only widescreen) can
+ * raise it while a scene that only ever flips (play) is on screen, and must
+ * restore it before screens drawn without flips (loading), which the held
+ * image would otherwise cover. Safe from any thread.
+ */
+void psx_mod_set_render_pass_hold(uint32_t frame_lengths);
 int psx_mod_set_auto_skip_fmv(int enabled);
 /*
  * Draw still artwork behind the game image in OpenGL letterbox/pillarbox

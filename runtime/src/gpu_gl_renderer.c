@@ -77,6 +77,7 @@
 #include "mod_texture_banks.h"
 #include "frame_interpolation.h"
 #include "render_pass_plan.h"
+extern double render_pass_hold_frames(void);   /* render_pass.c */
 #include "mod_plugins.h"      /* PSX_MOD_RENDER_PASS_* reasons */
 #include "host_osd.h"
 #include "psx_savestate_menu.h"
@@ -6398,7 +6399,8 @@ static int pass_gen_present(uint64_t deadline) {
     /* Past phase 1 the next flip is late (a lagging tick): the newest image
      * holds until it comes. Only a game that stops flipping for several
      * frame lengths expires the generation. */
-    if (!render_pass_gen_select(g->phase, g->n, p, &lo, &hi, &t)) {
+    if (!render_pass_gen_select_hold(g->phase, g->n, p, render_pass_hold_frames(),
+                                     &lo, &hi, &t)) {
         g->valid = 0;
         s_pgen_expired++;
         pfl_note(GL_PFL_EXPIRED, 0, -1, g->x, g->y, g->source_path, g->tex_w, g->tex_h);
