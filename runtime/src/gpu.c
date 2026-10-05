@@ -2285,7 +2285,9 @@ static void ws_expand_fullscreen_rect(int32_t *x, int32_t y, int *w, int h) {
     const int X = (int)draw_area_left, Y = (int)draw_area_top;
     const int W = (int)ws_disp_w(), H = (int)ws_disp_h();
     /* Only on a screen buffer. A drawing area wider than even the widened
-     * display is a VRAM clear, not a fade: PES 2's boot clears VRAM with a
+     * display is most likely a VRAM or staging clear rather than a screen
+     * fade (a width heuristic, not proof of what the area is), so it is not
+     * expanded here: PES 2's boot clears VRAM with a
      * 480x480 black TILE while the area spans all of VRAM, and growing it by
      * the margin wiped the face, hair, boot and shadow textures it had just
      * uploaded at x 512..543 (blonde heads and boots, no shadows all game). */
