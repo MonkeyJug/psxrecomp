@@ -164,6 +164,18 @@ void psx_mod_set_retained_scene_predicate(PSXModRetainedScenePredicate predicate
 typedef int (*PSXModWorldScenePredicate)(void);
 void psx_mod_set_world_scene_predicate(PSXModWorldScenePredicate predicate);
 
+/* Opt-in native-wide exclusion, the reverse of the world classifier. A nonzero
+ * result presents the current scene at native 4:3, as a menu is without
+ * [widescreen] full_2d, ahead of every other classifier (full_2d, the gameplay
+ * state allowlist, the world predicate). For a known 2D screen that native-wide
+ * cannot carry, for example one that draws into clip rectangles inset from the
+ * framebuffer origin. Zero defers to the normal classifier; NULL removes the
+ * callback. Only native-wide mode consults it. Same rules as the world
+ * predicate: pure, cheap, emulation thread, no guest writes, not savestate
+ * data. */
+typedef int (*PSXModFlatScenePredicate)(void);
+void psx_mod_set_flat_scene_predicate(PSXModFlatScenePredicate predicate);
+
 /*
  * Read the committed value of one of this package's declared options, as the
  * player left it in the launcher (or the manifest default when untouched).

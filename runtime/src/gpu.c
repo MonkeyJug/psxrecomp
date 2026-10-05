@@ -361,7 +361,13 @@ void psx_mod_set_world_scene_predicate(PSXModWorldScenePredicate predicate) {
 static int ws_mod_world_scene(void) {
     return ws_mode == 2 && s_ws_world_scene_predicate && s_ws_world_scene_predicate();
 }
+static PSXModFlatScenePredicate s_ws_flat_scene_predicate;
+void psx_mod_set_flat_scene_predicate(PSXModFlatScenePredicate predicate) {
+    s_ws_flat_scene_predicate = predicate;
+}
 static int ws_game_mode(void) {
+    if (ws_mode == 2 && s_ws_flat_scene_predicate && s_ws_flat_scene_predicate())
+        return 0;
     if (ws_mod_world_scene()) return 1;
     int state_match = ws_gameplay_state_matches();
     if (state_match >= 0) return state_match;
