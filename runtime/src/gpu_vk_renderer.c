@@ -1369,9 +1369,12 @@ static VkPipeline get_pipeline(int prog, int topo, int blend, int stencil, int c
 
 /* PSX 1555 -> RGBA8 (bit15 mask -> alpha). */
 static inline void rgb555_to_rgba8(uint16_t p, uint8_t out[4]) {
-    out[0] = (uint8_t)(((p)        & 0x1F) << 3);
-    out[1] = (uint8_t)(((p >> 5)   & 0x1F) << 3);
-    out[2] = (uint8_t)(((p >> 10)  & 0x1F) << 3);
+    /* 5 -> 8 bits as round(255 c / 31), the value the /31 shaders give
+     * (31 -> 255); rgba8_to_rgb555's >> 3 still reads back c for all 32 */
+    unsigned r = p & 0x1F, g = (p >> 5) & 0x1F, b = (p >> 10) & 0x1F;
+    out[0] = (uint8_t)((r * 255 + 15) / 31);
+    out[1] = (uint8_t)((g * 255 + 15) / 31);
+    out[2] = (uint8_t)((b * 255 + 15) / 31);
     out[3] = (uint8_t)((p & 0x8000) ? 0xFF : 0x00);
 }
 static inline uint16_t rgba8_to_rgb555(const uint8_t in[4]) {

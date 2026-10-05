@@ -1512,7 +1512,10 @@ static GLuint build_program(const char *vs, const char *fs) {
 
 /* ---- pixel conversion (PS1 1555: bit15=mask, B[14:10] G[9:5] R[4:0]) ---- */
 static inline uint32_t conv_1555_to_rgba8(uint16_t p) {
-    uint32_t r = (p & 0x1F) << 3, g = ((p >> 5) & 0x1F) << 3, b = ((p >> 10) & 0x1F) << 3;
+    /* 5 -> 8 bits as round(255 c / 31), the same value the /31 shaders and
+     * the flat path give (31 -> 255); >> 3 still reads back c for all 32 */
+    uint32_t r = p & 0x1F, g = (p >> 5) & 0x1F, b = (p >> 10) & 0x1F;
+    r = (r * 255 + 15) / 31; g = (g * 255 + 15) / 31; b = (b * 255 + 15) / 31;
     uint32_t a = (p >> 15) & 1 ? 0xFF : 0;
     return r | (g << 8) | (b << 16) | (a << 24);   /* RGBA8 little-endian */
 }
