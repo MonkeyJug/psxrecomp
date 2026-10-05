@@ -3059,9 +3059,9 @@ static void gpu_geometry(GLenum mode, const int *xs, const int *ys,
             float *v = &s_fb[s_fb_n * 6];
             v[0] = (float)xs[i];
             v[1] = (float)ys[i];
-            v[2] = ((cs[i] & 0x1F) << 3) / 255.0f;
-            v[3] = (((cs[i] >> 5) & 0x1F) << 3) / 255.0f;
-            v[4] = (((cs[i] >> 10) & 0x1F) << 3) / 255.0f;
+            v[2] = (cs[i] & 0x1F) / 31.0f;
+            v[3] = ((cs[i] >> 5) & 0x1F) / 31.0f;
+            v[4] = ((cs[i] >> 10) & 0x1F) / 31.0f;
             v[5] = mask_a;
             s_fb_n++;
         }
@@ -3085,9 +3085,9 @@ static void gpu_geometry(GLenum mode, const int *xs, const int *ys,
         for (int i = 0; i < 2; i++) {
             lv[i*6+0] = (float)xs[i];
             lv[i*6+1] = (float)ys[i];
-            lv[i*6+2] = ((cs[i] & 0x1F) << 3) / 255.0f;
-            lv[i*6+3] = (((cs[i] >> 5) & 0x1F) << 3) / 255.0f;
-            lv[i*6+4] = (((cs[i] >> 10) & 0x1F) << 3) / 255.0f;
+            lv[i*6+2] = (cs[i] & 0x1F) / 31.0f;
+            lv[i*6+3] = ((cs[i] >> 5) & 0x1F) / 31.0f;
+            lv[i*6+4] = ((cs[i] >> 10) & 0x1F) / 31.0f;
             lv[i*6+5] = mask_a;
         }
         line_to_quad(lv, quad);
@@ -3117,9 +3117,9 @@ static void gpu_geometry(GLenum mode, const int *xs, const int *ys,
         for (int i = 0; i < n; i++) {
             verts[i*6+0] = precise ? s_pc_x[i] : (float)xs[i];
             verts[i*6+1] = precise ? s_pc_y[i] : (float)ys[i];
-            verts[i*6+2] = ((cs[i] & 0x1F) << 3) / 255.0f;
-            verts[i*6+3] = (((cs[i] >> 5) & 0x1F) << 3) / 255.0f;
-            verts[i*6+4] = (((cs[i] >> 10) & 0x1F) << 3) / 255.0f;
+            verts[i*6+2] = (cs[i] & 0x1F) / 31.0f;
+            verts[i*6+3] = ((cs[i] >> 5) & 0x1F) / 31.0f;
+            verts[i*6+4] = ((cs[i] >> 10) & 0x1F) / 31.0f;
             verts[i*6+5] = mask_a;
         }
         /* S > 1: a line becomes a one-native-pixel quad (see line_to_quad);
@@ -3186,9 +3186,9 @@ static void gpu_geometry(GLenum mode, const int *xs, const int *ys,
         float *v = &s_fb[s_fb_n * 6];
         v[0] = precise ? s_pc_x[i] : (float)xs[i];
         v[1] = precise ? s_pc_y[i] : (float)ys[i];
-        v[2] = ((cs[i] & 0x1F) << 3) / 255.0f;
-        v[3] = (((cs[i] >> 5) & 0x1F) << 3) / 255.0f;
-        v[4] = (((cs[i] >> 10) & 0x1F) << 3) / 255.0f;
+        v[2] = (cs[i] & 0x1F) / 31.0f;
+        v[3] = ((cs[i] >> 5) & 0x1F) / 31.0f;
+        v[4] = ((cs[i] >> 10) & 0x1F) / 31.0f;
         v[5] = mask_a;
         s_fb_n++;
     }
@@ -3335,9 +3335,9 @@ static void gpu_textured_triangle(const int *xs, const int *ys,
  * hr_begin/hr_end. */
 static void wide_flat_rect_direct(int wx, int y, int ww, int h, uint16_t c, int semi) {
     if (ww <= 0 || h <= 0) return;
-    float r = ((c & 0x1F) << 3) / 255.0f;
-    float g = (((c >> 5) & 0x1F) << 3) / 255.0f;
-    float b = (((c >> 10) & 0x1F) << 3) / 255.0f;
+    float r = (c & 0x1F) / 31.0f;
+    float g = ((c >> 5) & 0x1F) / 31.0f;
+    float b = ((c >> 10) & 0x1F) / 31.0f;
     float a = s_mask_set ? 1.0f : 0.0f;
     float fx0 = (float)wx, fy0 = (float)y, fx1 = (float)(wx + ww), fy1 = (float)(y + h);
     float verts[6 * 6] = {
