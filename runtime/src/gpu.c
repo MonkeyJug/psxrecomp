@@ -2269,6 +2269,7 @@ static int32_t ws_disp_h(void) {
  * display; ordinary world-space rectangles remain untouched. */
 /* Draw area and offset, defined with the GP0(E3h)-(E5h) state further down. */
 static uint32_t draw_area_left, draw_area_top;
+static uint32_t draw_area_right, draw_area_bottom;
 static int32_t draw_offset_x, draw_offset_y;
 
 static void ws_expand_fullscreen_rect(int32_t *x, int32_t y, int *w, int h) {
@@ -2283,6 +2284,12 @@ static void ws_expand_fullscreen_rect(int32_t *x, int32_t y, int *w, int h) {
     const int ax = (int)*x + (int)draw_offset_x, ay = (int)y + (int)draw_offset_y;
     const int X = (int)draw_area_left, Y = (int)draw_area_top;
     const int W = (int)ws_disp_w(), H = (int)ws_disp_h();
+    /* Only on a screen buffer. A drawing area wider than even the widened
+     * display is a VRAM clear, not a fade: PES 2's boot clears VRAM with a
+     * 480x480 black TILE while the area spans all of VRAM, and growing it by
+     * the margin wiped the face, hair, boot and shadow textures it had just
+     * uploaded at x 512..543 (blonde heads and boots, no shadows all game). */
+    if ((int)draw_area_right - X + 1 > W + 2 * ws_nw_offset()) return;
     if (ax <= X && ax + *w >= X + W && ay <= Y && ay + h >= Y + H) {
         int off = ws_nw_offset();
         *x -= off;
